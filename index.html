@@ -1,78 +1,205 @@
-// ==========================================
-// 最終版：雙核心分頁導航邏輯
-// ==========================================
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>丸&猴國內日常記帳</title>
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="丸猴日常">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <style>
+    :root { --primary: #e67e22; --bg: #fdfaf7; --card: #ffffff; --text: #333333; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background-color: var(--bg); margin: 0; padding: 15px; color: var(--text); padding-bottom: 40px; }
+    .app-container { max-width: 500px; margin: 0 auto; }
+    .summary-card { background: linear-gradient(135deg, #f39c12 0%, #d35400 100%); color: white; padding: 20px; border-radius: 16px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); margin-bottom: 20px; text-align: center; font-size: 14px; font-weight: bold; white-space: pre-line; line-height: 1.5; }
+    .card { background: var(--card); padding: 20px; border-radius: 16px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); margin-bottom: 15px; }
+    h3 { margin-top: 0; color: #444; font-size: 16px; border-bottom: 2px solid #f0f0f0; padding-bottom: 8px; }
+    .form-group { margin-bottom: 15px; }
+    label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; color: #666; }
+    input, select { width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 8px; box-sizing: border-box; font-size: 15px; background: #fafafa; transition: 0.3s; }
+    input:focus, select:focus { border-color: var(--primary); outline: none; background: #fff; }
+    .grid-6 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+    .grid-btn { border: 1px solid #ddd; padding: 10px; border-radius: 8px; text-align: center; background: #fff; cursor: pointer; font-size: 14px; transition: 0.2s; }
+    .grid-btn.active { background: var(--primary); color: white; border-color: var(--primary); font-weight: bold; }
+    .hidden { display: none; }
+    .file-input-wrapper { background: #eef2f7; border: 2px dashed #cbd5e1; padding: 15px; border-radius: 8px; text-align: center; cursor: pointer; position: relative; }
+    .file-input-wrapper input[type="file"] { position: absolute; left: 0; top: 0; opacity: 0; width: 100%; height: 100%; cursor: pointer; }
+    .submit-btn { width: 100%; background: #e67e22; color: white; border: none; padding: 14px; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; box-shadow: 0 4px 10px rgba(230,126,34,0.3); transition: 0.2s; margin-bottom: 15px; }
+    .submit-btn:disabled { background: #bdc3c7; box-shadow: none; cursor: not-allowed; }
+    .view-sheet-btn { display: block; width: 100%; background: #7f8c8d; color: white; border: none; padding: 12px; border-radius: 8px; font-size: 14px; font-weight: bold; cursor: pointer; text-align: center; text-decoration: none; box-sizing: border-box; box-shadow: 0 2px 5px rgba(0,0,0,0.1); transition: 0.2s; }
+  </style>
+</head>
+<body>
+  <div class="app-container">
+    <div class="summary-card" id="summaryBox">📊 正在連線至日常試算表...</div>
+    <form id="expenseForm">
+      <div class="card">
+        <h3>1. 日常花費資訊</h3>
+        <div class="form-group"><label>消費日期</label><input type="date" id="date" name="date" required></div>
+        <div class="form-group">
+          <label>消費類別</label>
+          <div class="grid-6" id="categoryGrid">
+            <div class="grid-btn active" data-val="食">🍕 食</div>
+            <div class="grid-btn" data-val="衣">👕 衣</div>
+            <div class="grid-btn" data-val="住">🏠 住</div>
+            <div class="grid-btn" data-val="行">🚗 行</div>
+            <div class="grid-btn" data-val="育">🎓 育</div>
+            <div class="grid-btn" data-val="樂">🎡 樂</div>
+          </div>
+          <input type="hidden" id="category" name="category" value="食">
+        </div>
+        <div class="form-group"><label>細項備註</label><input type="text" name="memo" placeholder="例如：晚餐、悠遊卡儲值..." required></div>
+        <div class="form-group">
+          <label>📸 上傳收據/發票明細（選填）</label>
+          <div class="file-input-wrapper">
+            <span id="fileLabel">點此拍照或選擇相片檔案</span>
+            <input type="file" id="receiptFile" accept="image/*">
+          </div>
+        </div>
+      </div>
 
-// 旅遊帳：永遠只寫入【最左邊第一個分頁】
-function getTravelSheet(ss) {
-  return ss.getSheets()[0];
-}
+      <div class="card">
+        <h3>2. 金額與支付方式</h3>
+        <div class="form-group" style="display: flex; gap: 10px;">
+          <div style="flex: 1;">
+            <label>幣別</label>
+            <select name="currency" id="currency">
+              <option value="台幣">TWD 新台幣</option>
+            </select>
+          </div>
+          <div style="flex: 2;"><label>消費金額 (新台幣)</label><input type="number" name="amount" step="any" required></div>
+        </div>
+        <div class="form-group">
+          <label>付款方式</label>
+          <select name="payMethod">
+            <option value="現金">💵 現金支付</option>
+            <option value="信用卡">💳 信用卡刷卡</option>
+            <option value="LinePay">📱 行動支付</option>
+          </select>
+        </div>
+      </div>
 
-// 日常帳：自動搜尋當月名稱的分頁 (例如 "2026-06日常")
-function getDailySheetByMonth(ss) {
-  var now = new Date();
-  var year = now.getFullYear();
-  var month = ("0" + (now.getMonth() + 1)).slice(-2); 
-  var targetName = year + "-" + month + "日常";
-  
-  var sheet = ss.getSheetByName(targetName);
-  
-  // 防呆：如果當月分頁還沒建，就先寫入分頁清單中的「第二個」(索引1)
-  if (!sheet) {
-    var sheets = ss.getSheets();
-    sheet = (sheets.length > 1) ? sheets[1] : sheets[0];
-  }
-  return sheet;
-}
+      <div class="card">
+        <h3>3. 精算分帳分流</h3>
+        <div class="form-group">
+          <label>分帳方式</label>
+          <select name="splitType" id="splitType" onchange="toggleCustomSplit()">
+            <option value="兩人平均">👥 兩人平均平分</option>
+            <option value="丸子全付">👩 幫丸子全額代墊</option>
+            <option value="猴子全付">🐵 幫猴子全額代墊</option>
+            <option value="各自輸入特定金額/比例">✏️ 各自輸入特定金額/比例</option>
+          </select>
+        </div>
+        <div id="customSplitSection" class="hidden" style="background: #f9f9f9; padding: 12px; border-radius: 8px; border: 1px dashed #ccc;">
+          <div class="form-group"><label>丸子佔多少？</label><input type="number" name="weightMaruko" id="weightMaruko" placeholder="0"></div>
+          <div class="form-group"><label>猴子佔多少？</label><input type="number" name="weightMonkey" id="weightMonkey" placeholder="0"></div>
+        </div>
+      </div>
+      <button type="button" class="submit-btn" id="subBtn" onclick="submitForm()">🚀 記錄日常消費</button>
+    </form>
+    <a href="#" target="_blank" class="view-sheet-btn" id="sheetLink">📊 查看後台日常試算表</a>
+  </div>
 
-function submitExpense(formData) {
-  try {
-    var ss = SpreadsheetApp.getActiveSpreadsheet();
-    var sheet = (formData.appType === "daily") ? getDailySheetByMonth(ss) : getTravelSheet(ss);
+  <script>
+    document.getElementById('date').valueAsDate = new Date();
     
-    // ... 後續寫入邏輯不變 ...
-    var amount = parseFloat(formData.amount) || 0;
-    var weightMaruko = formData.splitType === '各自輸入特定金額/比例' ? (parseFloat(formData.weightMaruko) || 0) : '';
-    var weightMonkey = formData.splitType === '各自輸入特定金額/比例' ? (parseFloat(formData.weightMonkey) || 0) : '';
-    
-    var lastRow = sheet.getLastRow();
-    var nextRow = lastRow + 1;
-    var nextId = lastRow;      
-    
-    var fileUrl = "";
-    if (formData.fileData && formData.fileName) {
-      var data = Utilities.base64Decode(formData.fileData.split(",")[1]);
-      var blob = Utilities.newBlob(data, formData.fileMimeType, formData.fileName);
-      var file = DriveApp.createFile(blob);
-      file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
-      fileUrl = file.getUrl();
+    // 這裡替換成你剛剛給我的試算表連結
+    const mySheetUrl = "https://docs.google.com/spreadsheets/d/1WnseeLh3rc5l_H2CenyoeVX9E6GDIpx_KG3jDnBRZqk/edit?usp=sharing"; 
+    // 這裡是你的 GAS 部署網址（務必不含 /exec）
+    const gasBaseUrl = "https://script.google.com/macros/s/AKfycbzll0eEhUyEjy1VvnrD3rt1-4pZve_kN0_8le5GEwBwu_igSqktmbv006SM5lOJdtlq"; 
+
+    document.getElementById('sheetLink').href = mySheetUrl;
+
+    // ...以下程式碼省略，完整貼上即可...
+    document.getElementById('receiptFile').addEventListener('change', function() {
+      if(this.files.length > 0) document.getElementById('fileLabel').innerText = "🎵 已選取：" + this.files[0].name;
+    });
+
+    const buttons = document.querySelectorAll('#categoryGrid .grid-btn');
+    buttons.forEach(btn => {
+      btn.addEventListener('click', function() {
+        buttons.forEach(b => b.classList.remove('active'));
+        this.classList.add('active');
+        document.getElementById('category').value = this.getAttribute('data-val');
+      });
+    });
+
+    function toggleCustomSplit() {
+      const type = document.getElementById('splitType').value;
+      document.getElementById('customSplitSection').classList.toggle('hidden', type !== '各自輸入特定金額/比例');
     }
-    
-    var formula预估台币 = '=IF(F' + nextRow + '="台幣",G' + nextRow + ',IF(F' + nextRow + '="日幣",G' + nextRow + '*1.015*0.215,IF(F' + nextRow + '="歐元",G' + nextRow + '*1.015*35.2,G' + nextRow + '*1.015*32.5)))';
-    var formula最终采计 = '=IF(ISBLANK(L' + nextRow + '),M' + nextRow + ',L' + nextRow + ')';
-    var formula丸子应付 = '=IFS(I' + nextRow + '="兩人平均",N' + nextRow + '/2,I' + nextRow + '="丸子全付",N' + nextRow + ',I' + nextRow + '="猴子全付",0,I' + nextRow + '="各自輸入特定金額/比例",N' + nextRow + '*(J' + nextRow + '/(J' + nextRow + '+K' + nextRow + ')))';
-    var formula猴子应付 = '=IFS(I' + nextRow + '="兩人平均",N' + nextRow + '/2,I' + nextRow + '="丸子全付",0,I' + nextRow + '="猴子全付",N' + nextRow + ',I' + nextRow + '="各自輸入特定金額/比例",N' + nextRow + '*(K' + nextRow + '/(J' + nextRow + '+K' + nextRow + ')))';
 
-    sheet.appendRow([nextId, formData.date, formData.category, formData.memo, fileUrl, formData.currency, amount, formData.payMethod, formData.splitType, weightMaruko, weightMonkey, "", formula预估台币, formula最终采计, formula丸子应付, formula猴子应付]);
-    
-    SpreadsheetApp.flush();
-    return { success: true, summary: getSummary(sheet) };
-  } catch (error) { return { success: false, error: error.toString() }; }
-}
+    window.onload = function() {
+      fetch(gasBaseUrl + "/exec?type=daily")
+        .then(res => res.json())
+        .then(data => { document.getElementById('summaryBox').innerText = data.summary; })
+        .catch(err => { document.getElementById('summaryBox').innerText = "📊 暫時無法獲取即時對帳資訊"; });
+    }
 
-function getSummary(sheet) {
-  var lastRow = sheet.getLastRow();
-  var sheetName = sheet.getName();
-  if (lastRow < 2) return "📊 【" + sheetName + "】尚未有消費紀錄";
-  var marukoValues = sheet.getRange(2, 15, lastRow - 1, 1).getValues();
-  var monkeyValues = sheet.getRange(2, 16, lastRow - 1, 1).getValues();
-  var totalM = 0, totalK = 0;
-  for (var i = 0; i < marukoValues.length; i++) { totalM += (parseFloat(marukoValues[i][0]) || 0); totalK += (parseFloat(monkeyValues[i][0]) || 0); }
-  return "📊 【" + sheetName + "】累計應付：\n丸子：NT$" + Math.round(totalM) + " | 猴子：NT$" + Math.round(totalK);
-}
+    function submitForm() {
+      const form = document.getElementById('expenseForm');
+      if(!form.checkValidity()) { alert("請確認欄位皆已填寫！"); return; }
+      
+      const subBtn = document.getElementById('subBtn');
+      subBtn.disabled = true;
+      document.getElementById('summaryBox').innerText = "⚡ 正在處理日常帳目中...";
 
-function doGet(e) {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var type = (e && e.parameter && e.parameter.type) ? e.parameter.type : "travel";
-  var sheet = (type === "daily") ? getDailySheetByMonth(ss) : getTravelSheet(ss);
-  return ContentService.createTextOutput(JSON.stringify({ summary: getSummary(sheet) })).setMimeType(ContentService.MimeType.JSON);
-}
+      const fileInput = document.getElementById('receiptFile').files[0];
+      const formData = {
+        appType: "daily",
+        date: document.getElementById('date').value,
+        category: document.getElementById('category').value,
+        memo: form.memo.value,
+        currency: form.currency.value,
+        amount: form.amount.value,
+        payMethod: form.payMethod.value,
+        splitType: form.splitType.value,
+        weightMaruko: form.weightMaruko.value,
+        weightMonkey: form.weightMonkey.value,
+        fileData: null, fileName: null, fileMimeType: null
+      };
+
+      if (fileInput) {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+          formData.fileData = e.target.result;
+          formData.fileName = fileInput.name;
+          formData.fileMimeType = fileInput.type;
+          sendToServer(formData);
+        };
+        reader.readAsDataURL(fileInput);
+      } else {
+        sendToServer(formData);
+      }
+    }
+
+    function sendToServer(formData) {
+      fetch(gasBaseUrl + "/exec", {
+        method: "POST",
+        body: JSON.stringify(formData)
+      })
+      .then(res => res.json())
+      .then(result => {
+        const subBtn = document.getElementById('subBtn');
+        subBtn.disabled = false;
+        if(result.success) {
+          alert("🎉 日常消費寫入成功！");
+          document.getElementById('summaryBox').innerText = result.summary;
+          document.getElementById('receiptFile').value = "";
+          document.getElementById('fileLabel').innerText = "點此拍照或選擇相片檔案";
+          document.getElementById('expenseForm').reset();
+          document.getElementById('date').valueAsDate = new Date();
+          toggleCustomSplit();
+        } else { 
+          alert("❌ 錯誤：" + result.error); 
+          document.getElementById('summaryBox').innerText = "❌ 寫入失敗";
+        }
+      })
+      .catch(err => {
+        document.getElementById('subBtn').disabled = false;
+        alert("❌ 連線失敗：" + err);
+      });
+    }
+  </script>
+</body>
+</html>
