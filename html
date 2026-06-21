@@ -1,0 +1,78 @@
+// ==========================================
+// 最終版：雙核心分頁導航邏輯
+// ==========================================
+
+// 旅遊帳：永遠只寫入【最左邊第一個分頁】
+function getTravelSheet(ss) {
+  return ss.getSheets()[0];
+}
+
+// 日常帳：自動搜尋當月名稱的分頁 (例如 "2026-06日常")
+function getDailySheetByMonth(ss) {
+  var now = new Date();
+  var year = now.getFullYear();
+  var month = ("0" + (now.getMonth() + 1)).slice(-2); 
+  var targetName = year + "-" + month + "日常";
+  
+  var sheet = ss.getSheetByName(targetName);
+  
+  // 防呆：如果當月分頁還沒建，就先寫入分頁清單中的「第二個」(索引1)
+  if (!sheet) {
+    var sheets = ss.getSheets();
+    sheet = (sheets.length > 1) ? sheets[1] : sheets[0];
+  }
+  return sheet;
+}
+
+function submitExpense(formData) {
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var sheet = (formData.appType === "daily") ? getDailySheetByMonth(ss) : getTravelSheet(ss);
+    
+    // ... 後續寫入邏輯不變 ...
+    var amount = parseFloat(formData.amount) || 0;
+    var weightMaruko = formData.splitType === '各自輸入特定金額/比例' ? (parseFloat(formData.weightMaruko) || 0) : '';
+    var weightMonkey = formData.splitType === '各自輸入特定金額/比例' ? (parseFloat(formData.weightMonkey) || 0) : '';
+    
+    var lastRow = sheet.getLastRow();
+    var nextRow = lastRow + 1;
+    var nextId = lastRow;      
+    
+    var fileUrl = "";
+    if (formData.fileData && formData.fileName) {
+      var data = Utilities.base64Decode(formData.fileData.split(",")[1]);
+      var blob = Utilities.newBlob(data, formData.fileMimeType, formData.fileName);
+      var file = DriveApp.createFile(blob);
+      file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+      fileUrl = file.getUrl();
+    }
+    
+    var formula预估台币 = '=IF(F' + nextRow + '="台幣",G' + nextRow + ',IF(F' + nextRow + '="日幣",G' + nextRow + '*1.015*0.215,IF(F' + nextRow + '="歐元",G' + nextRow + '*1.015*35.2,G' + nextRow + '*1.015*32.5)))';
+    var formula最终采计 = '=IF(ISBLANK(L' + nextRow + '),M' + nextRow + ',L' + nextRow + ')';
+    var formula丸子应付 = '=IFS(I' + nextRow + '="兩人平均",N' + nextRow + '/2,I' + nextRow + '="丸子全付",N' + nextRow + ',I' + nextRow + '="猴子全付",0,I' + nextRow + '="各自輸入特定金額/比例",N' + nextRow + '*(J' + nextRow + '/(J' + nextRow + '+K' + nextRow + ')))';
+    var formula猴子应付 = '=IFS(I' + nextRow + '="兩人平均",N' + nextRow + '/2,I' + nextRow + '="丸子全付",0,I' + nextRow + '="猴子全付",N' + nextRow + ',I' + nextRow + '="各自輸入特定金額/比例",N' + nextRow + '*(K' + nextRow + '/(J' + nextRow + '+K' + nextRow + ')))';
+
+    sheet.appendRow([nextId, formData.date, formData.category, formData.memo, fileUrl, formData.currency, amount, formData.payMethod, formData.splitType, weightMaruko, weightMonkey, "", formula预估台币, formula最终采计, formula丸子应付, formula猴子应付]);
+    
+    SpreadsheetApp.flush();
+    return { success: true, summary: getSummary(sheet) };
+  } catch (error) { return { success: false, error: error.toString() }; }
+}
+
+function getSummary(sheet) {
+  var lastRow = sheet.getLastRow();
+  var sheetName = sheet.getName();
+  if (lastRow < 2) return "📊 【" + sheetName + "】尚未有消費紀錄";
+  var marukoValues = sheet.getRange(2, 15, lastRow - 1, 1).getValues();
+  var monkeyValues = sheet.getRange(2, 16, lastRow - 1, 1).getValues();
+  var totalM = 0, totalK = 0;
+  for (var i = 0; i < marukoValues.length; i++) { totalM += (parseFloat(marukoValues[i][0]) || 0); totalK += (parseFloat(monkeyValues[i][0]) || 0); }
+  return "📊 【" + sheetName + "】累計應付：\n丸子：NT$" + Math.round(totalM) + " | 猴子：NT$" + Math.round(totalK);
+}
+
+function doGet(e) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var type = (e && e.parameter && e.parameter.type) ? e.parameter.type : "travel";
+  var sheet = (type === "daily") ? getDailySheetByMonth(ss) : getTravelSheet(ss);
+  return ContentService.createTextOutput(JSON.stringify({ summary: getSummary(sheet) })).setMimeType(ContentService.MimeType.JSON);
+}
