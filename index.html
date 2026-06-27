@@ -23,11 +23,20 @@
     .hidden { display: none; }
     .file-input-wrapper { background: #eef2f7; border: 2px dashed #cbd5e1; padding: 15px; border-radius: 8px; text-align: center; cursor: pointer; position: relative; }
     .submit-btn { width: 100%; background: #2ecc71; color: white; border: none; padding: 14px; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; }
+    
+    /* 🌟 新增：查看試算表連結的樣式 */
+    .sheet-link-container { text-align: center; margin-top: -5px; margin-bottom: 15px; }
+    .sheet-link { text-decoration: none; color: var(--primary); font-size: 14px; font-weight: bold; }
   </style>
 </head>
 <body>
   <div class="app-container">
     <div class="summary-card" id="summaryBox">📊 載入中...</div>
+    
+    <div class="sheet-link-container">
+      <a id="sheetLink" class="sheet-link" href="#" target="_blank" style="display: none;">🔍 點此查看完整消費清單</a>
+    </div>
+
     <form id="expenseForm">
       <div class="card">
         <h3>1. 基本花費資訊</h3>
@@ -82,14 +91,12 @@
   </div>
 
   <script>
-    // 🌟 修正 1：這裡設定為 daily，讓它去抓日常記帳分頁
     const CURRENT_APP_TYPE = "daily"; 
     // ⚠️ 記得確保這是你最新的 GAS URL
     const GAS_URL = "https://script.google.com/macros/s/AKfycbzll0eEhUyEjy1VvnrD3rt1-4pZve_kN0_8le5GEwBwu_igSqktmbv006SM5lOJdtlq/exec";
 
     document.getElementById('date').valueAsDate = new Date();
     
-    // 🌟 修正 2：補上分類按鈕的點擊邏輯，不然按了不會變色也不會改值
     document.querySelectorAll('.grid-btn').forEach(btn => {
       btn.onclick = () => {
         document.querySelectorAll('.grid-btn').forEach(b => b.classList.remove('active'));
@@ -98,7 +105,6 @@
       };
     });
 
-    // 讓上傳圖片時能顯示檔名
     document.getElementById('receiptFile').addEventListener('change', function(e) {
       const label = document.getElementById('fileLabel');
       label.innerText = e.target.files[0] ? e.target.files[0].name : '點此選擇檔案';
@@ -114,6 +120,13 @@
         .then(res => res.json())
         .then(data => {
           document.getElementById('summaryBox').innerHTML = data.summary.replace(/\\n/g, '<br>');
+          
+          // 🌟 新增：把 GAS 傳回來的網址塞進去，並把按鈕顯示出來
+          if(data.url) {
+            const sheetLink = document.getElementById('sheetLink');
+            sheetLink.href = data.url;
+            sheetLink.style.display = 'inline-block';
+          }
         });
     }
 
@@ -122,63 +135,3 @@
     function submitForm() {
       const form = document.getElementById('expenseForm');
       if(!form.checkValidity()) { alert("請填寫完整！"); return; }
-      
-      const btn = document.getElementById('subBtn');
-      btn.innerText = "⏳ 寫入中...";
-      btn.disabled = true;
-
-      const fileInput = document.getElementById('receiptFile').files[0];
-      
-      const send = (base64Data) => {
-        const formData = {
-          appType: CURRENT_APP_TYPE,
-          date: form.date.value,
-          category: document.getElementById('category').value,
-          memo: form.memo.value,
-          currency: form.currency.value,
-          amount: form.amount.value,
-          payMethod: form.payMethod.value,
-          splitType: form.splitType.value,
-          weightMaruko: form.weightMaruko.value,
-          weightMonkey: form.weightMonkey.value,
-          fileBase64: base64Data ? base64Data : null, // 🌟 修正 3：改為 GAS 看得懂的 fileBase64
-          fileName: fileInput ? fileInput.name : null,
-          fileMimeType: fileInput ? fileInput.type : null
-        };
-
-        fetch(GAS_URL, { method: "POST", body: JSON.stringify(formData) })
-          .then(res => res.json())
-          .then(result => {
-            alert("🎉 紀錄成功！");
-            btn.innerText = "🚀 記錄這筆消費";
-            btn.disabled = false;
-            document.getElementById('summaryBox').innerHTML = result.summary.replace(/\\n/g, '<br>');
-            
-            // 清空表單
-            form.memo.value = '';
-            form.amount.value = '';
-            document.getElementById('receiptFile').value = '';
-            document.getElementById('fileLabel').innerText = '點此選擇檔案';
-          })
-          .catch(err => {
-            alert("發生錯誤，請稍後再試！");
-            btn.innerText = "🚀 記錄這筆消費";
-            btn.disabled = false;
-          });
-      };
-
-      if (fileInput) {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-          // 🌟 修正 4：正確切除 base64 前綴，避免 GAS 解析失敗
-          const base64 = e.target.result.split(',')[1];
-          send(base64);
-        };
-        reader.readAsDataURL(fileInput);
-      } else { 
-        send(null); 
-      }
-    }
-  </script>
-</body>
-</html>
