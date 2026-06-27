@@ -135,3 +135,61 @@
     function submitForm() {
       const form = document.getElementById('expenseForm');
       if(!form.checkValidity()) { alert("請填寫完整！"); return; }
+      
+      const btn = document.getElementById('subBtn');
+      btn.innerText = "⏳ 寫入中...";
+      btn.disabled = true;
+
+      const fileInput = document.getElementById('receiptFile').files[0];
+      
+      const send = (base64Data) => {
+        const formData = {
+          appType: CURRENT_APP_TYPE,
+          date: form.date.value,
+          category: document.getElementById('category').value,
+          memo: form.memo.value,
+          currency: form.currency.value,
+          amount: form.amount.value,
+          payMethod: form.payMethod.value,
+          splitType: form.splitType.value,
+          weightMaruko: form.weightMaruko.value,
+          weightMonkey: form.weightMonkey.value,
+          fileBase64: base64Data ? base64Data : null, 
+          fileName: fileInput ? fileInput.name : null,
+          fileMimeType: fileInput ? fileInput.type : null
+        };
+
+        fetch(GAS_URL, { method: "POST", body: JSON.stringify(formData) })
+          .then(res => res.json())
+          .then(result => {
+            alert("🎉 紀錄成功！");
+            btn.innerText = "🚀 記錄這筆消費";
+            btn.disabled = false;
+            document.getElementById('summaryBox').innerHTML = result.summary.replace(/\\n/g, '<br>');
+            
+            form.memo.value = '';
+            form.amount.value = '';
+            document.getElementById('receiptFile').value = '';
+            document.getElementById('fileLabel').innerText = '點此選擇檔案';
+          })
+          .catch(err => {
+            alert("發生錯誤，請稍後再試！");
+            btn.innerText = "🚀 記錄這筆消費";
+            btn.disabled = false;
+          });
+      };
+
+      if (fileInput) {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const base64 = e.target.result.split(',')[1];
+          send(base64);
+        };
+        reader.readAsDataURL(fileInput);
+      } else { 
+        send(null); 
+      }
+    }
+  </script>
+</body>
+</html>
