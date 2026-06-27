@@ -2,21 +2,11 @@
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>丸&猴日常記帳</title>
-  <link rel="apple-touch-icon" href="https://raw.githubusercontent.com/cutedonliu-droid/darily-icon/refs/heads/main/icon.png">
-  <script>
-    const CURRENT_APP_TYPE = "daily"; // 關鍵：這裡設定為 daily
-    // ... 後面 JS 邏輯不變 ...
-  </script>
-</head>
-<body>...</body>
-</html>
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>丸&猴旅遊分帳</title>
+  <title>丸&猴日常記帳</title>
+  
+  <link rel="apple-touch-icon" href="https://raw.githubusercontent.com/cutedonliu-droid/darily-icon/refs/heads/main/icon.png">
+  
   <style>
     :root { --primary: #4a90e2; --bg: #f5f7fa; --card: #ffffff; --text: #333333; }
     body { font-family: -apple-system, sans-serif; background-color: var(--bg); margin: 0; padding: 15px; color: var(--text); padding-bottom: 40px; }
@@ -92,11 +82,27 @@
   </div>
 
   <script>
-    // ⚠️ 設定此頁面類型：請確保此處填寫正確 ("travel" 或 "daily")
-    const CURRENT_APP_TYPE = "travel"; 
+    // 🌟 修正 1：這裡設定為 daily，讓它去抓日常記帳分頁
+    const CURRENT_APP_TYPE = "daily"; 
+    // ⚠️ 記得確保這是你最新的 GAS URL
     const GAS_URL = "https://script.google.com/macros/s/AKfycbzll0eEhUyEjy1VvnrD3rt1-4pZve_kN0_8le5GEwBwu_igSqktmbv006SM5lOJdtlq/exec";
 
     document.getElementById('date').valueAsDate = new Date();
+    
+    // 🌟 修正 2：補上分類按鈕的點擊邏輯，不然按了不會變色也不會改值
+    document.querySelectorAll('.grid-btn').forEach(btn => {
+      btn.onclick = () => {
+        document.querySelectorAll('.grid-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        document.getElementById('category').value = btn.getAttribute('data-val');
+      };
+    });
+
+    // 讓上傳圖片時能顯示檔名
+    document.getElementById('receiptFile').addEventListener('change', function(e) {
+      const label = document.getElementById('fileLabel');
+      label.innerText = e.target.files[0] ? e.target.files[0].name : '點此選擇檔案';
+    });
     
     function toggleCustom() {
       const type = document.getElementById('splitType').value;
@@ -117,12 +123,15 @@
       const form = document.getElementById('expenseForm');
       if(!form.checkValidity()) { alert("請填寫完整！"); return; }
       
-      document.getElementById('subBtn').disabled = true;
+      const btn = document.getElementById('subBtn');
+      btn.innerText = "⏳ 寫入中...";
+      btn.disabled = true;
+
       const fileInput = document.getElementById('receiptFile').files[0];
       
-      const send = (fileData) => {
+      const send = (base64Data) => {
         const formData = {
-          appType: CURRENT_APP_TYPE, // 自動帶入設定好的類型
+          appType: CURRENT_APP_TYPE,
           date: form.date.value,
           category: document.getElementById('category').value,
           memo: form.memo.value,
@@ -132,7 +141,7 @@
           splitType: form.splitType.value,
           weightMaruko: form.weightMaruko.value,
           weightMonkey: form.weightMonkey.value,
-          fileData: fileData ? fileData : null,
+          fileBase64: base64Data ? base64Data : null, // 🌟 修正 3：改為 GAS 看得懂的 fileBase64
           fileName: fileInput ? fileInput.name : null,
           fileMimeType: fileInput ? fileInput.type : null
         };
@@ -141,18 +150,34 @@
           .then(res => res.json())
           .then(result => {
             alert("🎉 紀錄成功！");
-            document.getElementById('subBtn').disabled = false;
+            btn.innerText = "🚀 記錄這筆消費";
+            btn.disabled = false;
             document.getElementById('summaryBox').innerHTML = result.summary.replace(/\\n/g, '<br>');
-            form.reset();
-            document.getElementById('date').valueAsDate = new Date();
+            
+            // 清空表單
+            form.memo.value = '';
+            form.amount.value = '';
+            document.getElementById('receiptFile').value = '';
+            document.getElementById('fileLabel').innerText = '點此選擇檔案';
+          })
+          .catch(err => {
+            alert("發生錯誤，請稍後再試！");
+            btn.innerText = "🚀 記錄這筆消費";
+            btn.disabled = false;
           });
       };
 
       if (fileInput) {
         const reader = new FileReader();
-        reader.onload = (e) => send(e.target.result);
+        reader.onload = (e) => {
+          // 🌟 修正 4：正確切除 base64 前綴，避免 GAS 解析失敗
+          const base64 = e.target.result.split(',')[1];
+          send(base64);
+        };
         reader.readAsDataURL(fileInput);
-      } else { send(); }
+      } else { 
+        send(null); 
+      }
     }
   </script>
 </body>
